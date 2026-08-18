@@ -1,43 +1,51 @@
+<#
+.SYNOPSIS
+    Creates a PSSession to a remote computer and enters an interactive session with it.
+
+.DESCRIPTION
+    Calls New-QPSSession to create a single QPSSession to the specified computer, then opens an interactive
+    session to it via Enter-PSSession. Throws if the session could not be created.
+
+.PARAMETER ComputerName
+    Name of the remote computer to connect to.
+
+.PARAMETER Credential
+    Credentials to use for the connection. If omitted, falls back to a matching preset or prompts the user.
+
+.PARAMETER AuthMode
+    Authentication mechanism to use (e.g. "Kerberos", "Negotiate", "Basic"). If omitted, falls back to a
+    matching preset or defaults to "Kerberos".
+
+.PARAMETER PS7
+    Connects to the "PowerShell.7" session configuration instead of the default "microsoft.powershell".
+
+.PARAMETER UseSSL
+    Uses SSL for the connection.
+
+.PARAMETER SkipCertCheck
+    Skips CA, CN and revocation checks for the SSL certificate.
+
+.EXAMPLE
+    Enter-QPSSession -ComputerName "server1"
+
+    Connects to server1 and enters an interactive session.
+#>
 function Enter-QPSSession {
-    <#
-    .SYNOPSIS
-        Interactive enter into a remote PowerShell session.
-    .DESCRIPTION
-        Creates a PSSession session to the specified computer and enters it interactively.
-        The user will close the PSSession session himself when he sees fit.
-    .PARAMETER ComputerName
-        Name of the remote computer to connect to.
-    .PARAMETER PowerShellVersion
-        PowerShell endpoint to use on the remote machine. "WindowsPowerShell" (default) uses the
-        built-in Windows PowerShell 5.1 endpoint; "PowerShell7" uses the PowerShell 7 endpoint.
-        Defaults to the module variable $QPSSession_PowerShell_Version.
-    .PARAMETER Credential
-        Credentials for the connection. If not specified, credentials are selected automatically
-        based on the computer name: $admaccountkz for names starting with "kz" or ending with ".kz",
-        $admaccountac for all others.
-    .EXAMPLE
-        PS C:\> Enter-QPSSession -ComputerName "server01"
-
-        Enters an interactive remote session to server01 using the default PowerShell endpoint
-        and auto-selected credentials.
-    .EXAMPLE
-        PS C:\> Enter-QPSSession "dc01.kz" -PowerShellVersion "PowerShell7"
-
-        Connects to a .kz domain controller using the PowerShell 7 endpoint.
-    .INPUTS
-        None
-    .OUTPUTS
-        None
-    #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true, Position = 0)]
+        [ValidateNotNullOrWhiteSpace()]
         [string]$ComputerName,
-        [Parameter(Mandatory = $false, Position = 1)]
-        [ValidateSet("WindowsPowerShell", "PowerShell7")]
-        [string]$PowerShellVersion = $QPSSession_PowerShell_Version,
-        [Parameter(Mandatory = $false, Position = 2)]
-        [pscredential]$Credential
+        [Parameter(Mandatory = $false)]
+        [pscredential]$Credential,
+        [Parameter(Mandatory = $false)]
+        [string]$AuthMode,
+        [Parameter(Mandatory = $false)]
+        [switch]$PS7,
+        [Parameter(Mandatory = $false)]
+        [switch]$UseSSL,
+        [Parameter(Mandatory = $false)]
+        [switch]$SkipCertCheck
     )
 
     begin {
@@ -45,20 +53,33 @@ function Enter-QPSSession {
     }
 
     process {
-        $Params = @{
-            ComputerName      = $ComputerName
-            PowerShellVersion = $PowerShellVersion
+        [hashtable]$Params = @{
+            ComputerName = $ComputerName
         }
         if ($Credential) {
             $Params.Add("Credential", $Credential)
         }
-        $QPSSession = (New-QPSSession @Params)[0]
+        if ($AuthMode) {
+            $Params.Add("AuthMode", $AuthMode)
+        }
+        if ($PS7) {
+            $Params.Add("PS7", $PS7)
+        }
+        if ($UseSSL) {
+            $Params.Add("UseSSL", $UseSSL)
+        }
+        if ($SkipCertCheck) {
+            $Params.Add("SkipCertCheck", $SkipCertCheck)
+        }
+
+        # New-QPSSession returns array of QPSSession objects
+        [QPSSession]$QPSSession = (New-QPSSession @Params)[0]
 
         if ($QPSSession) {
             $QPSSession.Enter()
         }
         else {
-            throw "Failed to create PSSession to $ComputerName."
+            throw "Failed to create PSSession to '$ComputerName'."
         }
     }
 

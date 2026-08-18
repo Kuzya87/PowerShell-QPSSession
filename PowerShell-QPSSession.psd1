@@ -4,7 +4,7 @@
     RootModule        = '.\Root.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '0.1.0'
+    ModuleVersion     = '0.2.0'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -22,7 +22,7 @@
     Copyright         = '(c) Yuriy Kuzmin. All rights reserved.'
 
     # Description of the functionality provided by this module
-    # Description = ''
+    Description        = 'Wraps New-PSSession, Enter-PSSession, and Import-PSSession in a QPSSession class with automatic per-computer credential, authentication, and endpoint resolution via presets.'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '7.4'
@@ -95,7 +95,15 @@
         PSData = @{
 
             # Tags applied to this module. These help with module discovery in online galleries.
-            # Tags = @()
+            Tags = @(
+                'PSRemoting',
+                'PSSession',
+                'WinRM',
+                'Kerberos',
+                'ImplicitRemoting',
+                'Windows',
+                'PSEdition_Core'
+            )
 
             # A URL to the license for this module.
             # LicenseUri = ''
@@ -107,7 +115,7 @@
             # IconUri = ''
 
             # ReleaseNotes of this module
-            # ReleaseNotes = ''
+            ReleaseNotes = '0.2.0 - QPSSessionPreset-based resolution of Credential, AuthMode, ConfigurationName, UseSSL and SkipCertCheck via $global:QPSSession_Preset; optional PowerShell 7 endpoint (-PS7); SSL and certificate-check switches on all three functions.'
 
             # Prerelease string of this module
             # Prerelease = ''

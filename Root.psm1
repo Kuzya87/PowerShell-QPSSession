@@ -12,14 +12,6 @@ foreach ($file in $FunctionFiles) {
     . $file.FullName
 }
 
-############################
-# Create default variables #
-############################
-
-if (-not (Test-Path -Path variable:QPSSession_PowerShell_Version)) {
-    $QPSSession_PowerShell_Version = "WindowsPowerShell"
-}
-
 ###############
 # Set aliases #
 ###############
@@ -37,7 +29,8 @@ New-Alias -Name "import" -Value "Import-QPSSession" -Force
 
 # Define the types to export with type accelerators.
 $ExportableTypes = @(
-    [QPSSession]
+    [QPSSession],
+    [QPSSessionPreset]
 )
 # Get the internal TypeAccelerators class to use its static methods.
 $TypeAcceleratorsClass = [psobject].Assembly.GetType(

@@ -89,7 +89,7 @@ function Import-QPSSession {
         }
         
         # New-QPSSession returns array of QPSSession objects
-        [QPSSession]$QPSSession = (New-QPSSession @Params)[0]
+        [QPSSession]$QPSSession = @(New-QPSSession @Params)[0]
 
         if ($QPSSession) {
             switch ($PSCmdlet.ParameterSetName) {

@@ -1,33 +1,36 @@
 # PowerShell-QPSSession
 
-A PowerShell module that wraps `New-PSSession` / `Enter-PSSession` / `Import-PSSession` behind a unified `QPSSession` class and three convenience functions. Targets Windows environments with Kerberos authentication and WinRM over SSL.
+Модуль PowerShell для создания и управления удалёнными сеансами `PSSession`. Предоставляет класс `QPSSession` и функции-обёртки над `New-PSSession`, `Enter-PSSession` и `Import-PSSession`. Параметры подключения можно задавать напрямую или через пресеты.
 
-## Requirements
+## Требования
 
-- PowerShell 7.4 or later
-- WinRM enabled on remote computers
-- Kerberos authentication available between client and target
-- Remote endpoint configured:
-  - `microsoft.powershell` — built-in Windows PowerShell 5.1 (always present)
-  - `PowerShell.7` — PowerShell 7 endpoint (must be registered manually on the remote if needed)
+- PowerShell 7.6 или новее.
+- При использовании Kerberos в `ComputerName` указывайте короткое имя компьютера или полное доменное имя (FQDN). Для остальных режимов аутентификации также поддерживаются IPv4- и IPv6-адреса.
+- На удалённых компьютерах должен быть настроен WinRM.
+- Для Kerberos должна быть настроена аутентификация между клиентом и целевым компьютером.
+- На удалённом компьютере должна быть зарегистрирована используемая конечная точка:
+  - `microsoft.powershell` — встроенная конечная точка Windows PowerShell 5.1.
+  - `PowerShell.7` — конечная точка PowerShell 7; при необходимости её нужно зарегистрировать на удалённом компьютере.
 
-## Installation
+## Установка
 
 ```powershell
 Import-Module -Name ".\PowerShell-QPSSession.psd1"
 ```
 
-## Presets
+## Пресеты
 
-Every function resolves its connection settings (`Credential`, `AuthMode`, `ConfigurationName`, `UseSSL`, `SkipCertCheck`) using the same order of precedence:
+Параметры подключения разрешаются в следующем порядке:
 
-1. An explicit parameter passed to the function — always wins.
-2. The corresponding value from a matching preset in `$global:QPSSession_Preset` — used when the parameter is not supplied.
-3. A built-in default (`AuthMode = "Kerberos"`, `ConfigurationName = "microsoft.powershell"`, `UseSSL = $false`, `SkipCertCheck = $false`; if no credential is available at all, the user is prompted).
+1. Значение, явно переданное функции.
+2. Значение из первого подходящего пресета в `$global:QPSSession_Preset`.
+3. Значение по умолчанию: `AuthMode = "Kerberos"`, `ConfigurationName = "microsoft.powershell"`, `UseSSL = $false`, `SkipCertCheck = $false`.
 
-Presets are entirely optional — omit `$global:QPSSession_Preset` and pass `-Credential` explicitly if you don't need per-computer defaults.
+Если учётные данные не заданы явно и не получены из пресета, модуль использует текущие учётные данные пользователя, если выбранный режим аутентификации это поддерживает. Модуль не запрашивает учётные данные интерактивно.
 
-Define `$global:QPSSession_Preset` as an array of hashtables **before** calling any of the three functions (typically right before importing the module):
+Пресеты необязательны. Чтобы использовать значения по умолчанию, не задавайте `$global:QPSSession_Preset`.
+
+Если пресеты нужны, задайте `$global:QPSSession_Preset` как массив хеш-таблиц до вызова функций. Значение `CredentialName` — это имя переменной, содержащей объект `PSCredential`; указывайте имя без префикса области видимости:
 
 ```powershell
 $admaccountkz = Get-Credential "DOMAIN\admin_kz"
@@ -35,178 +38,169 @@ $admaccountac = Get-Credential "DOMAIN\admin_ac"
 
 $global:QPSSession_Preset = @(
     @{
-        Description         = "Kazakhstan domain"
+        Description         = "Домен Казахстана"
         ComputerNamePattern = @("^kz", "\.kz$")
-        CredentialName      = "admaccountkz"
+        CredentialName     = "admaccountkz"
         UseSSL              = "true"
     },
     @{
-        Description         = "Everything else"
+        Description         = "Остальные компьютеры"
         ComputerNamePattern = @(".*")
-        CredentialName      = "admaccountac"
+        CredentialName     = "admaccountac"
     }
 )
 
 Import-Module -Name ".\PowerShell-QPSSession.psd1"
 ```
 
-**Preset hashtable keys:**
+### Ключи пресета
 
-| Key | Type | Required | Description |
+| Ключ | Тип | Обязательный | Описание |
 |---|---|---|---|
-| `Description` | `string` | No | Free-text label, for readability only |
-| `ComputerNamePattern` | `string[]` | Yes | One or more regex patterns (case-insensitive), matched against the target computer name |
-| `CredentialName` | `string` | No | Name of a variable (resolved with `Get-Variable`) holding a `pscredential` |
-| `AuthMode` | `string` | No | Authentication mechanism, e.g. `"Kerberos"`, `"Negotiate"`, `"Basic"` |
-| `ConfigurationName` | `string` | No | Remote session configuration/endpoint name |
-| `UseSSL` | `string` | No | `"true"` or `"false"` (parsed with `[bool]::Parse` — no other values are accepted) |
-| `SkipCertCheck` | `string` | No | `"true"` or `"false"` (parsed with `[bool]::Parse` — no other values are accepted) |
+| `Description` | `string` | Да | Произвольное описание пресета. |
+| `ComputerNamePattern` | `string[]` | Да | Один или несколько регулярных выражений для имени компьютера. Сопоставление не учитывает регистр. |
+| `CredentialName` | `string` | Нет | Имя переменной с объектом `PSCredential`; переменная ищется командой `Get-Variable`. |
+| `AuthMode` | `string` | Нет | Режим аутентификации: `Default`, `Basic`, `Negotiate`, `NegotiateWithImplicitCredential`, `Credssp`, `Digest` или `Kerberos`. |
+| `ConfigurationName` | `string` | Нет | Имя удалённой конфигурации (конечной точки). |
+| `UseSSL` | `string` или `bool` | Нет | `true` или `false`. |
+| `SkipCertCheck` | `string` или `bool` | Нет | `true` или `false`; пропускает проверки центра сертификации, имени и отзыва сертификата. |
 
-Presets are checked in array order; the **first** entry whose `ComputerNamePattern` matches the target computer name is used, so put more specific patterns before catch-all ones.
+Пресеты проверяются по порядку. Используется первый пресет, регулярное выражение которого совпало с именем компьютера. Размещайте более конкретные шаблоны перед общими.
 
-## Functions
+Некорректные значения `AuthMode`, `UseSSL` или `SkipCertCheck` приводят к предупреждению; такое значение игнорируется. Значения по умолчанию для этих параметров: `Kerberos`, `$false` и `$false` соответственно. Для `Basic`, `Credssp` и `Digest` требуются учётные данные — из параметра `-Credential` или из пресета. `NegotiateWithImplicitCredential` несовместим с любыми учётными данными, переданными параметром или найденными в пресете.
+
+## Функции
 
 ### `New-QPSSession`
 
-Creates one or more `QPSSession` objects and returns them as a list. Used internally by `Enter-QPSSession` and `Import-QPSSession`, but can also be called directly when you need a session object for further use. A computer that fails to connect produces a warning and is omitted from the result instead of stopping the whole call.
+Создаёт удалённый сеанс для каждого имени компьютера и возвращает список успешно созданных объектов `QPSSession`. Если подключение к отдельному компьютеру не удалось, функция выдаёт предупреждение и продолжает обработку остальных имён.
 
-**Alias:** `newpssession`
+**Псевдоним:** `newpssession`
 
 ```powershell
-# Single session, settings resolved from a matching preset (or defaults)
+# Создать сеанс с параметрами из подходящего пресета или со значениями по умолчанию
 $sessions = New-QPSSession -ComputerName "dc01.kz"
 
-# Multiple computers
+# Создать сеансы для нескольких компьютеров
 $sessions = New-QPSSession -ComputerName "srv01", "srv02", "srv03"
 
-# PowerShell 7 endpoint
+# Использовать конечную точку PowerShell 7
 $sessions = New-QPSSession -ComputerName "srv01" -PS7
 
-# Explicit credentials over SSL
+# Передать учётные данные и использовать SSL
 $sessions = New-QPSSession -ComputerName "srv01" -Credential (Get-Credential) -UseSSL
 ```
 
-**Parameters:**
-
-| Parameter | Type | Required | Description |
+| Параметр | Тип | Обязательный | Описание |
 |---|---|---|---|
-| `ComputerName` | `string[]` | Yes | One or more target computer names or FQDNs |
-| `Credential` | `pscredential` | No | Explicit credentials; overrides any preset, prompts if omitted and no preset supplies one |
-| `AuthMode` | `string` | No | Explicit authentication mechanism; overrides any preset, defaults to `"Kerberos"` |
-| `PS7` | `switch` | No | Use the `"PowerShell.7"` endpoint instead of `"microsoft.powershell"`; overrides any preset |
-| `UseSSL` | `switch` | No | Use SSL for the connection; overrides any preset |
-| `SkipCertCheck` | `switch` | No | Skip CA / CN / revocation checks for the SSL certificate; overrides any preset |
+| `ComputerName` | `string[]` | Да | Имена компьютеров или FQDN для подключения. |
+| `Credential` | `PSCredential` | Нет | Учётные данные для подключения. Имеют приоритет над значением из пресета. Если параметр не задан, используются данные из подходящего пресета или текущие учётные данные пользователя, когда это поддерживается выбранным режимом аутентификации. |
+| `AuthMode` | `string` | Нет | Режим аутентификации. Имеет приоритет над значением из пресета; по умолчанию — `Kerberos`. |
+| `PS7` | `switch` | Нет | Использовать конечную точку `PowerShell.7` вместо `microsoft.powershell`. Имеет приоритет над `ConfigurationName` из пресета. |
+| `UseSSL` | `switch` | Нет | Использовать SSL. Имеет приоритет над значением из пресета. |
+| `SkipCertCheck` | `switch` | Нет | Пропустить проверки сертификата. Имеет приоритет над значением из пресета. |
 
-**Returns:** `System.Collections.Generic.List[QPSSession]`
-
----
+Возвращаемое значение — `System.Collections.Generic.List[QPSSession]`.
 
 ### `Enter-QPSSession`
 
-Creates a single `QPSSession` to the specified computer (via `New-QPSSession`) and enters it interactively. The session remains open until you exit it with `exit`. Throws if the session could not be created.
+Создаёт удалённый сеанс для указанного компьютера и переходит в интерактивный режим. Сеанс остаётся открытым после штатного выхода из интерактивного режима; закройте его методом `Remove()` или командой `Remove-PSSession`. Если вход завершается ошибкой, модуль удаляет созданный сеанс.
 
-**Alias:** `enter`
+**Псевдоним:** `enter`
 
 ```powershell
-# Basic interactive session
+# Открыть интерактивный сеанс
 Enter-QPSSession -ComputerName "srv01"
 
-# Alias form
+# Вызвать функцию через псевдоним
 enter "srv01"
 
-# Using the PowerShell 7 endpoint
+# Использовать конечную точку PowerShell 7
 Enter-QPSSession -ComputerName "dc01.kz" -PS7
 
-# Explicit credentials over SSL, skipping certificate checks
+# Передать учётные данные и использовать SSL
 Enter-QPSSession -ComputerName "srv01" -Credential (Get-Credential) -UseSSL -SkipCertCheck
 ```
 
-**Parameters:**
-
-| Parameter | Type | Required | Description |
+| Параметр | Тип | Обязательный | Описание |
 |---|---|---|---|
-| `ComputerName` | `string` | Yes | Target computer name or FQDN |
-| `Credential` | `pscredential` | No | Explicit credentials; overrides any preset, prompts if omitted and no preset supplies one |
-| `AuthMode` | `string` | No | Explicit authentication mechanism; overrides any preset, defaults to `"Kerberos"` |
-| `PS7` | `switch` | No | Use the `"PowerShell.7"` endpoint instead of `"microsoft.powershell"`; overrides any preset |
-| `UseSSL` | `switch` | No | Use SSL for the connection; overrides any preset |
-| `SkipCertCheck` | `switch` | No | Skip CA / CN / revocation checks for the SSL certificate; overrides any preset |
-
----
+| `ComputerName` | `string` | Да | Имя компьютера или FQDN. |
+| `Credential` | `PSCredential` | Нет | Учётные данные для подключения; если параметр не задан, используются данные из подходящего пресета или текущие учётные данные пользователя, когда это допускает режим аутентификации. |
+| `AuthMode` | `string` | Нет | Режим аутентификации; по умолчанию — `Kerberos`. |
+| `PS7` | `switch` | Нет | Использовать конечную точку `PowerShell.7`. |
+| `UseSSL` | `switch` | Нет | Использовать SSL. |
+| `SkipCertCheck` | `switch` | Нет | Пропустить проверки сертификата. |
 
 ### `Import-QPSSession`
 
-Creates a single `QPSSession` to the specified computer (via `New-QPSSession`) and imports individual commands or entire modules from it into the current local session using implicit remoting. The imported commands run on the remote computer but are callable locally as if they were native commands. Throws if the session could not be created.
+Создаёт удалённый сеанс и импортирует из него указанные команды или целые модули с помощью неявного удалённого взаимодействия. Импортированные команды запускаются на удалённом компьютере, но вызываются из локального сеанса.
 
-The session is kept open after the import and is accessible via `Get-PSSession`. Close it manually when done.
+После успешного импорта сеанс остаётся открытым и доступен через `Get-PSSession`. Закройте его вручную, когда он больше не нужен. Если импорт завершается ошибкой, модуль удаляет созданный сеанс.
 
-**Alias:** `import`
+**Псевдоним:** `import`
 
 ```powershell
-# Import specific commands from a domain controller
+# Импортировать отдельные команды с контроллера домена
 Import-QPSSession -ComputerName "dc01.kz" -Cmdlets "Get-ADUser", "Get-ADGroup", "Set-ADUser"
 
-# Import an entire module
+# Импортировать модуль целиком
 Import-QPSSession -ComputerName "dc01.kz" -Modules "ActiveDirectory"
 
-# Use the alias
+# Вызвать функцию через псевдоним
 import "dc01.kz" -Modules "ActiveDirectory"
 
-# PowerShell 7 endpoint with explicit credentials
+# Использовать конечную точку PowerShell 7 и явные учётные данные
 Import-QPSSession -ComputerName "srv01" -Modules "DhcpServer" -Credential (Get-Credential) -PS7
 ```
 
-**Parameters:**
-
-| Parameter | Type | Required | Description |
+| Параметр | Тип | Обязательный | Описание |
 |---|---|---|---|
-| `ComputerName` | `string` | Yes | Target computer name or FQDN |
-| `Credential` | `pscredential` | No | Explicit credentials; overrides any preset, prompts if omitted and no preset supplies one |
-| `AuthMode` | `string` | No | Explicit authentication mechanism; overrides any preset, defaults to `"Kerberos"` |
-| `PS7` | `switch` | No | Use the `"PowerShell.7"` endpoint instead of `"microsoft.powershell"`; overrides any preset |
-| `UseSSL` | `switch` | No | Use SSL for the connection; overrides any preset |
-| `SkipCertCheck` | `switch` | No | Skip CA / CN / revocation checks for the SSL certificate; overrides any preset |
-| `Cmdlets` | `string[]` | Yes (set 1) | Command names to import. Mutually exclusive with `-Modules` |
-| `Modules` | `string[]` | Yes (set 2) | Module names to import in full. Mutually exclusive with `-Cmdlets` |
+| `ComputerName` | `string` | Да | Имя компьютера или FQDN. |
+| `Credential` | `PSCredential` | Нет | Учётные данные для подключения; если параметр не задан, используются данные из подходящего пресета или текущие учётные данные пользователя, когда это допускает режим аутентификации. |
+| `AuthMode` | `string` | Нет | Режим аутентификации; по умолчанию — `Kerberos`. |
+| `PS7` | `switch` | Нет | Использовать конечную точку `PowerShell.7`. |
+| `UseSSL` | `switch` | Нет | Использовать SSL. |
+| `SkipCertCheck` | `switch` | Нет | Пропустить проверки сертификата. |
+| `Cmdlets` | `string[]` | Да, набор `byCommand` | Имена команд для импорта. Нельзя указывать одновременно с `Modules`. |
+| `Modules` | `string[]` | Да, набор `byModule` | Имена модулей для импорта целиком. Нельзя указывать одновременно с `Cmdlets`. |
 
-## QPSSession class
+## Класс `QPSSession`
 
-`New-QPSSession` returns `QPSSession` objects. You can also instantiate the class directly — the parameterized constructors call `Create()` automatically.
+`New-QPSSession` возвращает объекты `QPSSession`. Их также можно создавать напрямую. Конструкторы с именем компьютера автоматически вызывают `Create()`. Конструкторы без `Credential` используют текущие учётные данные, если это поддерживается выбранным режимом аутентификации.
 
-**Properties:**
+### Свойства
 
-| Property | Type | Description |
+| Свойство | Тип | Описание |
 |---|---|---|
-| `ComputerName` | `string` | Remote computer name |
-| `Id` | `int` | PSSession ID assigned by PowerShell |
-| `State` | `string` | Current session state (`Opened`, `Closed`, `Disconnected`, …) |
-| `Credential` | `pscredential` | Credentials used for the session |
-| `AuthMode` | `string` | Authentication mode (default: `Kerberos`) |
-| `ConfigurationName` | `string` | Remote endpoint name (default: `microsoft.powershell`) |
-| `UseSSL` | `bool` | Whether SSL is used for the connection |
-| `SkipCertCheck` | `bool` | Skip CA / CN / revocation checks |
-| `RemotePSVersion` | `version` | PowerShell version running on the remote |
-| `PSSessionObject` | `PSSession` | The underlying `System.Management.Automation.Runspaces.PSSession` |
+| `ComputerName` | `string` | Имя удалённого компьютера. |
+| `Id` | `int` | Идентификатор удалённого сеанса, назначенный PowerShell. |
+| `State` | `string` | Текущее состояние сеанса, например `Opened`, `Closed` или `Disconnected`. |
+| `Credential` | `PSCredential` | Учётные данные сеанса; `$null`, если используются текущие учётные данные пользователя. |
+| `AuthMode` | `string` | Режим аутентификации; по умолчанию — `Kerberos`. |
+| `ConfigurationName` | `string` | Имя удалённой конечной точки; по умолчанию — `microsoft.powershell`. |
+| `UseSSL` | `bool` | Используется ли SSL. |
+| `SkipCertCheck` | `bool` | Пропускаются ли проверки сертификата. |
+| `RemotePSVersion` | `version` | Версия PowerShell на удалённом компьютере. |
+| `PSSessionObject` | `PSSession` | Объект удалённого сеанса PowerShell. |
 
-**Methods:**
+### Методы
 
-| Method | Description |
+| Метод | Описание |
 |---|---|
-| `Create()` | Opens the PSSession. Called automatically by parameterized constructors |
-| `Enter()` | Enters an interactive remote session |
-| `ImportCmdlets([string[]]$Cmdlets)` | Imports the specified commands via implicit remoting into the global scope |
-| `ImportModules([string[]]$Modules)` | Imports the specified modules via implicit remoting into the global scope |
-| `Disconnect()` | Disconnects the session (keeps it alive for later reconnect) |
-| `Connect()` | Reconnects a previously disconnected session |
-| `Remove()` | Closes and removes the session |
-| `UpdateState()` | Refreshes the `State` property from the underlying PSSession object |
+| `Create()` | Создаёт удалённый сеанс. |
+| `Enter()` | Переходит в интерактивный удалённый сеанс. |
+| `ImportCmdlets([string[]]$Cmdlets)` | Импортирует указанные команды в глобальную область видимости. |
+| `ImportModules([string[]]$Modules)` | Импортирует указанные модули в глобальную область видимости. |
+| `Disconnect()` | Отключает сеанс, сохраняя возможность повторного подключения. |
+| `Connect()` | Повторно подключает отключённый сеанс. |
+| `Remove()` | Закрывает удалённый сеанс и очищает связанные свойства объекта. |
+| `UpdateState()` | Обновляет свойство `State` по состоянию объекта `PSSession`. |
 
-**Direct usage example:**
+Пример прямого использования:
 
 ```powershell
 $s = [QPSSession]::new()
 $s.ComputerName      = "srv01"
-$s.Credential        = $admaccountac
 $s.AuthMode          = "Kerberos"
 $s.ConfigurationName = "microsoft.powershell"
 $s.UseSSL            = $true
@@ -218,27 +212,27 @@ Invoke-Command -Session $s.PSSessionObject -ScriptBlock { hostname }
 $s.Remove()
 ```
 
-## QPSSessionPreset class
+## Класс `QPSSessionPreset`
 
-Backs the [preset resolution](#presets) described above. Instances are built automatically from `$global:QPSSession_Preset` — you normally don't need to use it directly, but it's exported (as a type accelerator, alongside `QPSSession`) for advanced scenarios.
+Класс используется для разбора и выбора пресетов. Обычно создавать его вручную не требуется. Класс доступен через ускоритель типа PowerShell вместе с `QPSSession`.
 
-**Properties:**
+### Свойства
 
-| Property | Type | Description |
+| Свойство | Тип | Описание |
 |---|---|---|
-| `Description` | `string` | Free-text label |
-| `ComputerNamePattern` | `regex[]` | Regex patterns matched against a computer name |
-| `Credential` | `pscredential` | Resolved from the hashtable's `CredentialName` |
-| `AuthMode` | `string` | Authentication mode |
-| `ConfigurationName` | `string` | Remote endpoint name |
-| `UseSSL` | `bool` | Whether SSL is used |
-| `SkipCertCheck` | `bool` | Skip CA / CN / revocation checks |
+| `Description` | `string` | Описание пресета. |
+| `ComputerNamePattern` | `regex[]` | Регулярные выражения для сопоставления с именем компьютера. |
+| `Credential` | `PSCredential` | Учётные данные, найденные по имени переменной из `CredentialName`. |
+| `AuthMode` | `string` | Режим аутентификации. |
+| `ConfigurationName` | `string` | Имя удалённой конечной точки. |
+| `UseSSL` | `bool` | Использовать ли SSL. |
+| `SkipCertCheck` | `bool` | Пропускать ли проверки сертификата. |
 
-**Methods:**
+### Методы
 
-| Method | Description |
+| Метод | Описание |
 |---|---|
-| `IsMatch([string]$ComputerName)` | Returns `$true` if any pattern in `ComputerNamePattern` matches the given name |
-| `static ParseHashtable([hashtable]$Hashtable)` | Builds a `QPSSessionPreset` from one entry of `$global:QPSSession_Preset` |
-| `static GetPresetList()` | Parses all of `$global:QPSSession_Preset` into `QPSSessionPreset[]` |
-| `static FindPresetToUse([string]$ComputerName)` | Returns the first preset matching the given computer name, or `$null` |
+| `IsMatch([string]$ComputerName)` | Возвращает `$true`, если имя компьютера совпадает хотя бы с одним шаблоном. |
+| `static ParseHashtable([hashtable]$Hashtable)` | Создаёт объект пресета из хеш-таблицы. |
+| `static GetPresetList()` | Разбирает `$global:QPSSession_Preset` и возвращает список пресетов. |
+| `static FindPresetToUse([string]$ComputerName)` | Возвращает первый подходящий пресет или `$null`, если совпадений нет. |

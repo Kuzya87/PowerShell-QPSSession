@@ -1,46 +1,50 @@
 <#
 .SYNOPSIS
-    Creates a PSSession to a remote computer and imports remote commands or modules into the local session.
+    Создаёт PSSession с удалённым компьютером и импортирует команды или модули в локальный сеанс.
 
 .DESCRIPTION
-    Calls New-QPSSession to create a single QPSSession to the specified computer, then imports either
-    specific commands (-Cmdlets) or entire modules (-Modules) from the remote session into the local session.
-    Throws if the session could not be created.
+    Вызывает New-QPSSession для создания QPSSession с указанным компьютером, затем импортирует из удалённого
+    сеанса отдельные команды (-Cmdlets) или модули целиком (-Modules). Если создать сеанс не удалось,
+    возникает ошибка. Если импорт завершается ошибкой, созданный сеанс удаляется.
 
 .PARAMETER ComputerName
-    Name of the remote computer to connect to.
+    Имя удалённого компьютера для подключения.
 
 .PARAMETER Credential
-    Credentials to use for the connection. If omitted, falls back to a matching preset or prompts the user.
+    Учётные данные для подключения. Если параметр не задан, используются данные из подходящего пресета
+    или текущие учётные данные пользователя, если это поддерживается режимом AuthMode.
+    Режимы Basic, Credssp и Digest требуют учётные данные: их можно передать этим параметром или задать
+    в подходящем пресете. Режим NegotiateWithImplicitCredential несовместим с учётными данными,
+    переданными параметром или найденными в пресете.
 
 .PARAMETER AuthMode
-    Authentication mechanism to use (e.g. "Kerberos", "Negotiate", "Basic"). If omitted, falls back to a
-    matching preset or defaults to "Kerberos".
+    Режим аутентификации: Default, Basic, Negotiate, NegotiateWithImplicitCredential, Credssp, Digest или Kerberos.
+    Если параметр не задан, используется значение из подходящего пресета или "Kerberos".
 
 .PARAMETER PS7
-    Connects to the "PowerShell.7" session configuration instead of the default "microsoft.powershell".
+    Подключается к конечной точке "PowerShell.7" вместо "microsoft.powershell".
 
 .PARAMETER UseSSL
-    Uses SSL for the connection.
+    Использует SSL для подключения.
 
 .PARAMETER SkipCertCheck
-    Skips CA, CN and revocation checks for the SSL certificate.
+    Пропускает проверки центра сертификации, имени и отзыва SSL-сертификата.
 
 .PARAMETER Cmdlets
-    Names of the remote commands to import. Mutually exclusive with -Modules.
+    Имена удалённых команд для импорта. Нельзя указывать одновременно с -Modules.
 
 .PARAMETER Modules
-    Names of the remote modules to import in full. Mutually exclusive with -Cmdlets.
+    Имена удалённых модулей для импорта целиком. Нельзя указывать одновременно с -Cmdlets.
 
 .EXAMPLE
     Import-QPSSession -ComputerName "server1" -Cmdlets "Get-DhcpServerv4Scope"
 
-    Imports the Get-DhcpServerv4Scope command from server1 into the local session.
+    Импортирует команду Get-DhcpServerv4Scope с server1 в локальный сеанс.
 
 .EXAMPLE
     Import-QPSSession -ComputerName "server1" -Modules "DhcpServer"
 
-    Imports the entire DhcpServer module from server1 into the local session.
+    Импортирует модуль DhcpServer целиком с server1 в локальный сеанс.
 #>
 function Import-QPSSession {
     [CmdletBinding()]
@@ -49,6 +53,7 @@ function Import-QPSSession {
         [ValidateNotNullOrWhiteSpace()]
         [string]$ComputerName,
         [Parameter(Mandatory = $false)]
+        [ValidateNotNull()]
         [pscredential]$Credential,
         [Parameter(Mandatory = $false)]
         [string]$AuthMode,
@@ -72,24 +77,30 @@ function Import-QPSSession {
         [hashtable]$Params = @{
             ComputerName = $ComputerName
         }
-        if ($Credential) {
+        if ($PSBoundParameters.ContainsKey("Credential")) {
             $Params.Add("Credential", $Credential)
         }
-        if ($AuthMode) {
+        if ($PSBoundParameters.ContainsKey("AuthMode")) {
             $Params.Add("AuthMode", $AuthMode)
         }
-        if ($PS7) {
+        if ($PSBoundParameters.ContainsKey("PS7")) {
             $Params.Add("PS7", $PS7)
         }
-        if ($UseSSL) {
+        if ($PSBoundParameters.ContainsKey("UseSSL")) {
             $Params.Add("UseSSL", $UseSSL)
         }
-        if ($SkipCertCheck) {
+        if ($PSBoundParameters.ContainsKey("SkipCertCheck")) {
             $Params.Add("SkipCertCheck", $SkipCertCheck)
         }
         
-        # New-QPSSession returns array of QPSSession objects
-        [QPSSession]$QPSSession = (New-QPSSession @Params)[0]
+        # New-QPSSession возвращает массив объектов QPSSession
+        [QPSSession[]]$QPSSessions = @(New-QPSSession @Params)
+        if ($QPSSessions.Count -eq 0) {
+            throw [System.InvalidOperationException]::new(
+                "Не удалось создать PSSession для '$ComputerName'."
+            )
+        }
+        [QPSSession]$QPSSession = $QPSSessions[0]
 
         if ($QPSSession) {
             switch ($PSCmdlet.ParameterSetName) {
@@ -98,7 +109,9 @@ function Import-QPSSession {
             }
         }
         else {
-            throw "Failed to create PSSession to '$ComputerName'."
+            throw [System.InvalidOperationException]::new(
+                "Не удалось создать PSSession для '$ComputerName'."
+            )
         }
     }
 
